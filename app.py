@@ -174,15 +174,10 @@ def get_amazon_products(query, target_count=100):
                     img_elem = item.select_one('img.s-image')
                     img_url = img_elem.get('src', '') if img_elem else ""
 
-                    # 価格（整数部分 + 小数部分）
+                    # 価格（整数部分のみ、末尾の区切り文字を除去）
                     price_whole = item.select_one('.a-price-whole')
-                    price_fraction = item.select_one('.a-price-fraction')
                     if price_whole:
-                        whole_text = price_whole.get_text(strip=True).replace(',', '')
-                        if price_fraction:
-                            price = f"￥{price_whole.get_text(strip=True)}.{price_fraction.get_text(strip=True)}"
-                        else:
-                            price = f"￥{price_whole.get_text(strip=True)}"
+                        price = f"￥{price_whole.get_text(strip=True).rstrip('.,')}"
                     else:
                         price = "価格不明"
 
