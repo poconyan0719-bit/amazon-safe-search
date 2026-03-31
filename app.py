@@ -174,12 +174,17 @@ def get_amazon_products(query, target_count=100):
                     img_elem = item.select_one('img.s-image')
                     img_url = img_elem.get('src', '') if img_elem else ""
 
-                    # 価格（整数部分のみ、末尾の区切り文字を除去）
-                    price_whole = item.select_one('.a-price-whole')
-                    if price_whole:
-                        price = f"￥{price_whole.get_text(strip=True).rstrip('.,')}"
+                    # 価格（.a-price .a-offscreen が最も確実 - スクリーンリーダー用要素で完全な価格文字列を含む）
+                    price_offscreen = item.select_one('.a-price .a-offscreen')
+                    if price_offscreen:
+                        raw_price = price_offscreen.get_text(strip=True)  # 例: "\uffe51,380"
+                        price = raw_price
+                        # ソート用に数値を抽出（カンマ・円記号を除去）
+                        price_num_str = re.sub(r'[^\d]', '', raw_price)
+                        price_num = int(price_num_str) if price_num_str else 0
                     else:
                         price = "価格不明"
+                        price_num = 0
 
                     products.append({
                         'title': title,
@@ -187,7 +192,8 @@ def get_amazon_products(query, target_count=100):
                         'affiliate_link': affiliate_link,
                         'sakura_link': sakura_link,
                         'img_url': img_url,
-                        'price': price
+                        'price': price,
+                        'price_num': price_num
                     })
 
                 except Exception:
@@ -224,32 +230,58 @@ with st.form("search_form"):
     with col_btn:
         submit_button = st.form_submit_button("安心検索を実行", use_container_width=True)
 
+if 'search_results' not in st.session_state:
+    st.session_state.search_results = []
+if 'search_query_done' not in st.session_state:
+    st.session_state.search_query_done = ""
+
 if submit_button and search_query:
     results = get_amazon_products(search_query)
-    
-    if results:
-        st.success(f"「{search_query}」の検索結果: {len(results)}件の商品が見つかりました")
-        
-        # グリッド表示 (4列)
-        cols = st.columns(4)
-        for idx, product in enumerate(results):
-            with cols[idx % 4]:
-                st.markdown(f"""
-                <div class="product-card">
-                    <img src="{product['img_url']}" class="product-image">
-                    <div class="product-title" title="{product['title']}">{product['title']}</div>
-                    <div class="product-price">{product['price']}</div>
-                    <div class="btn-container">
-                        <a href="{product['affiliate_link']}" target="_blank" class="custom-btn btn-amazon">🛒 Amazon (直販)</a>
-                        <a href="{product['sakura_link']}" target="_blank" class="custom-btn btn-sakura">🌸 サクラチェッカー</a>
-                    </div>
+    st.session_state.search_results = results
+    st.session_state.search_query_done = search_query
+
+if st.session_state.search_results:
+    results = st.session_state.search_results
+    query_done = st.session_state.search_query_done
+
+    st.success(f"「{query_done}」の検索結果: {len(results)}件の商品が見つかりました")
+
+    # ソートUI
+    col_sort1, col_sort2 = st.columns([1, 3])
+    with col_sort1:
+        sort_order = st.selectbox(
+            "並び替え",
+            options=["取得順", "価格が安い順", "価格が高い順"],
+            label_visibility="collapsed"
+        )
+
+    # ソート適用
+    if sort_order == "価格が安い順":
+        results = sorted(results, key=lambda x: (x['price_num'] == 0, x['price_num']))
+    elif sort_order == "価格が高い順":
+        results = sorted(results, key=lambda x: x['price_num'], reverse=True)
+
+    # グリッド表示 (4列)
+    cols = st.columns(4)
+    for idx, product in enumerate(results):
+        with cols[idx % 4]:
+            st.markdown(f"""
+            <div class="product-card">
+                <img src="{product['img_url']}" class="product-image">
+                <div class="product-title" title="{product['title']}">{product['title']}</div>
+                <div class="product-price">{product['price']}</div>
+                <div class="btn-container">
+                    <a href="{product['affiliate_link']}" target="_blank" class="custom-btn btn-amazon">🛒 Amazon (直販)</a>
+                    <a href="{product['sakura_link']}" target="_blank" class="custom-btn btn-sakura">🌸 サクラチェッカー</a>
                 </div>
-                """, unsafe_allow_html=True)
-    else:
-        st.warning("商品が見つかりませんでした。別のキーワードでお試しください。")
+            </div>
+            """, unsafe_allow_html=True)
+elif submit_button if 'submit_button' in dir() else False:
+    st.warning("商品が見つかりませんでした。別のキーワードでお試しください。")
 
 st.markdown("---")
 st.info("💡 **このアプリについて**: 販売元がAmazon.co.jp直販の商品、かつスポンサーを除外して検索します。また、各商品に対してサクラチェッカーでの評価をワンクリックで確認できます。")
+
 
 st.markdown("""
 <div style="text-align: center; color: #888; font-size: 0.8rem; margin-top: 10px; padding: 10px;">
